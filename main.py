@@ -177,11 +177,31 @@ _MORPH_SEQUENCE = ("triangle", "square", "pentagon", "hexagon", "star", "superel
 _SHAPE_SAMPLES = 120  # points used to trace a non-circular ring
 
 
+def _angle(j, n):
+    return 2 * math.pi * j / n - math.pi / 2  # j == 0 points straight up
+
+
+def _centered(factors):
+    """Bundle per-angle radius `factors` with the (ox, oy) offset of the unit
+    shape's bounding-box center. Shapes like a triangle or star have their
+    centroid well off the bbox center, so drawing them straight from the canvas
+    center leaves the frame lop-sided (an empty band on one side). Subtracting
+    this offset (scaled by each ring's radius, so the rings stay concentric)
+    sits the shape squarely in the frame."""
+    n = len(factors)
+    xs = [factors[j] * math.cos(_angle(j, n)) for j in range(n)]
+    ys = [factors[j] * math.sin(_angle(j, n)) for j in range(n)]
+    ox = (max(xs) + min(xs)) / 2
+    oy = (max(ys) + min(ys)) / 2
+    return (tuple(factors), ox, oy)
+
+
 def _shape_factors(shape, n=_SHAPE_SAMPLES):
-    """Radius factor at n evenly spaced angles for a unit `shape` (circle == 1)."""
+    """Radius factor at n evenly spaced angles for a unit `shape` (circle == 1),
+    bundled with its bounding-box-center offset (see `_centered`)."""
     out = []
     for j in range(n):
-        th = 2 * math.pi * j / n - math.pi / 2  # start at the top
+        th = _angle(j, n)
         if shape == "circle":
             r = 1.0
         elif shape == "superellipse":
@@ -198,17 +218,18 @@ def _shape_factors(shape, n=_SHAPE_SAMPLES):
             r = math.cos(math.pi / sides) / math.cos(((th + math.pi / 2) % ang) - math.pi / sides)
         out.append(r)
     peak = max(out)
-    return [v / peak for v in out]
+    return _centered([v / peak for v in out])
 
 
 @functools.lru_cache(maxsize=None)
 def _shape_table(shape):
-    return tuple(_shape_factors(shape))
+    return _shape_factors(shape)
 
 
 def shape_factors_for(shape, phase=0.0):
-    """Factors for a ring at the given loop phase. `circle` -> None (use the
-    fast ellipse path). `morph` cycles through the shapes and loops seamlessly."""
+    """Shape data (factors + bbox offset) for a ring at the given loop phase.
+    `circle` -> None (use the fast ellipse path). `morph` cycles through the
+    shapes and loops seamlessly."""
     if shape == "circle":
         return None
     if shape != "morph":
@@ -218,14 +239,16 @@ def shape_factors_for(shape, phase=0.0):
     i = int(pos)
     frac = pos - i
     frac = frac * frac * (3 - 2 * frac)  # smoothstep between shapes
-    a, b = _shape_table(seq[i % len(seq)]), _shape_table(seq[(i + 1) % len(seq)])
-    return tuple(av + (bv - av) * frac for av, bv in zip(a, b))
+    a = _shape_table(seq[i % len(seq)])[0]
+    b = _shape_table(seq[(i + 1) % len(seq)])[0]
+    return _centered([av + (bv - av) * frac for av, bv in zip(a, b)])
 
 
-def _shape_xy(cx, cy, radius, factors):
+def _shape_xy(cx, cy, radius, shape):
+    factors, ox, oy = shape
     n = len(factors)
-    return [(cx + radius * factors[j] * math.cos(2 * math.pi * j / n - math.pi / 2),
-             cy + radius * factors[j] * math.sin(2 * math.pi * j / n - math.pi / 2))
+    return [(cx + radius * (factors[j] * math.cos(_angle(j, n)) - ox),
+             cy + radius * (factors[j] * math.sin(_angle(j, n)) - oy))
             for j in range(n)]
 
 
