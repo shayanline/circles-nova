@@ -42,7 +42,23 @@ rendering and color were reimagined.
 - **A limited soft glow.** A faint blurred halo under the rings for depth,
   kept subtle on purpose.
 - **A proper CLI.** Control the number of images, size, ring count, output
-  directory, and a random seed for reproducible output.
+  directory, color theme, and a random seed for reproducible output.
+
+## Themes
+
+Pick a palette with `--theme`:
+
+- `nova` (default): the lush orange to teal painting gradient.
+- `sunset`: gold burning down into night purple.
+- `arctic`: icy whites and glacier blues.
+- `neon`: electric colors that pop on black.
+- `mono`: black & white (a silver to white grayscale ramp).
+
+The same image (`--seed 21`) rendered in each theme:
+
+| nova | sunset | arctic | neon | mono |
+|:----:|:------:|:------:|:----:|:----:|
+| ![nova](examples/theme-nova.png) | ![sunset](examples/theme-sunset.png) | ![arctic](examples/theme-arctic.png) | ![neon](examples/theme-neon.png) | ![mono](examples/theme-mono.png) |
 
 ## Animated GIFs
 
@@ -115,6 +131,7 @@ python main.py                 # 16 images into imgs/
 python main.py --seed 7        # reproducible output
 python main.py -n 8 -s 512 -r 20
 python main.py --gif -s 512    # 512px looping GIFs
+python main.py --theme mono    # black & white
 ```
 
 ### Options
@@ -124,12 +141,16 @@ python main.py --gif -s 512    # 512px looping GIFs
 -s, --size     output image size in pixels (default: 256)
 -r, --rings    number of rings per image (default: 16)
 -o, --out-dir  output directory (default: imgs)
+<<<<<<< HEAD
     --gif      render a seamless looping GIF instead of static PNGs
     --style    GIF motion: ripple, flow, rippleflow, tunnel, twist, breathing,
                kaleidoscope, interference (default: ripple)
     --fps      GIF speed and smoothness: 20, 25, or 50; loop is always 1s (default: 25)
     --shape    ring shape: circle, triangle, square, pentagon, hexagon, star,
                superellipse, or morph (GIF only) (default: circle)
+=======
+-t, --theme    color theme: nova, sunset, arctic, neon, mono (default: nova)
+>>>>>>> feat/color-themes
     --seed     random seed for reproducible output
 ```
 
