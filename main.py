@@ -6,6 +6,7 @@
 # anti-aliased edges, plus a soft glow layer underneath each ring.
 
 import argparse
+import functools
 import os
 import random
 
@@ -36,11 +37,15 @@ def palette_color(pos: float):
     return interpolate(PALETTE[i], PALETTE[i + 1], scaled - i)
 
 
-def draw_tube_ring(draw, center, radius, width, color):
+def draw_tube_ring(draw, center, radius, width, color, alpha: float = 1.0):
     """Draw one ring as a rounded 3D-looking tube.
 
     It's still flat 2D, but shading the stroke from dark edges up to a bright
     highlight across its width makes each line read like a glossy wire/pipe.
+
+    `alpha` < 1 dims the whole tube toward black *after* shading, so a fading
+    ring keeps its hue (dimming the input color first would turn the white
+    highlight gray).
     """
     dark = interpolate(color, (0, 0, 0), 0.65)
     light = interpolate(color, (255, 255, 255), 0.6)
@@ -52,6 +57,8 @@ def draw_tube_ring(draw, center, radius, width, color):
         # Bead profile: dark at both edges, bright highlight just inside center.
         val = max(0.0, 1 - ((t - 0.42) / 0.5) ** 2)
         shade = interpolate(dark, light, val)
+        if alpha < 1.0:
+            shade = interpolate((0, 0, 0), shade, alpha)
         draw.ellipse((center - rr, center - rr, center + rr, center + rr),
                      outline=shade, width=2)
 
@@ -118,6 +125,135 @@ def generator(save_path: str, target_size: int = 256, rings: int = 16):
     image.save(save_path)
 
 
+def _draw_ring(rings_draw, glow_draw, center, radius, width, color, alpha=1.0):
+    """Draw one ring onto the crisp and glow layers, dimmed by alpha."""
+    draw_tube_ring(rings_draw, center, radius, width, color, alpha)
+    glow_color = interpolate((0, 0, 0), color, alpha) if alpha < 1.0 else color
+    glow_draw.ellipse((center - radius, center - radius,
+                       center + radius, center + radius),
+                      outline=glow_color, width=int(width))
+
+
+def _finish_frame(canvas_px, rings_layer, glow, scale_factor, target_size):
+    """Composite the dark canvas, soft glow and crisp rings, then downscale."""
+    glow = glow.filter(ImageFilter.GaussianBlur(radius=scale_factor * 2))
+    image = Image.new("RGB", (canvas_px, canvas_px), (8, 10, 20))
+    image = ImageChops.add(image, glow, scale=2.5)  # scale>1 dims the glow
+    image = ImageChops.add(image, rings_layer)
+    return image.resize((target_size, target_size), resample=Image.Resampling.LANCZOS)
+
+
+def _flow_color(coord, rings, lo, hi, phase):
+    """Color for the flowing styles: a there-and-back (cyclic) palette slice
+    sampled at `coord`, shifted by `phase` so it flows and loops seamlessly."""
+    u = coord / max(1, rings - 1) - phase
+    tri = 1 - abs(2 * (u % 1.0) - 1)  # triangle wave, period 1: 0 -> 1 -> 0
+    return palette_color(lo + (hi - lo) * tri)
+
+
+def render_ripple_frame(canvas_px, center, step, padding, rings, lo, hi,
+                        phase, scale_factor, target_size, flow=False):
+    """Moving rings that drift inward (the classic ripple).
+
+    The outermost ring is pinned in place and each new ring is born *beneath*
+    it and slides out from behind it at full brightness, so nothing ever pops,
+    fades or pulses in the rim. With `flow=True` (the "rippleflow" style) the
+    color also streams inward on top of the drift.
+    """
+    rings_layer = Image.new("RGB", (canvas_px, canvas_px), (0, 0, 0))
+    rings_draw = ImageDraw.Draw(rings_layer)
+    glow = Image.new("RGB", (canvas_px, canvas_px), (0, 0, 0))
+    glow_draw = ImageDraw.Draw(glow)
+
+    width = step * 0.55
+
+    # Moving rings drift inward. Each is born hidden behind the permanent outer
+    # ring and materialises gradually over one full loop as it travels its one
+    # ring-step out from under it, reaching full strength exactly when it sits
+    # at normal spacing. That paces emergence to the drift, so the rim emits at
+    # the loop's rhythm. The innermost fades out as it collapses to a point at
+    # the center (the bullseye), which is imperceptible.
+    for k in range(1, rings + 1):
+        eff = k - 1 + phase  # phase .. rings-1+phase
+        radius = center - (padding + eff * step)
+        emerge = min(1.0, eff)  # 0 at birth -> 1 one step in, paced to the loop
+        collapse = max(0.0, min(1.0, (radius - width) / step))
+        fade = min(emerge, collapse)
+        if fade <= 0:
+            continue
+        alpha = fade * fade * (3 - 2 * fade)  # smoothstep
+        if flow:
+            color = _flow_color(eff, rings, lo, hi, phase)
+        else:
+            color = palette_color(lo + (hi - lo) * (eff / max(1, rings - 1)))
+        _draw_ring(rings_draw, glow_draw, center, radius, width, color, alpha)
+
+    # Permanent outermost ring, drawn LAST so it is never overwritten and stays
+    # exactly the same every frame, masking where the next ring is born.
+    _draw_ring(rings_draw, glow_draw, center, center - padding, width,
+               palette_color(lo))
+
+    return _finish_frame(canvas_px, rings_layer, glow, scale_factor, target_size)
+
+
+def render_flow_frame(canvas_px, center, step, padding, rings, lo, hi,
+                      phase, scale_factor, target_size):
+    """Still rings, flowing color.
+
+    Rings stay exactly where the static image puts them; only the color flows
+    inward. A there-and-back (cyclic) palette makes the flow wrap seamlessly,
+    with no fades and no rings appearing or vanishing.
+    """
+    rings_layer = Image.new("RGB", (canvas_px, canvas_px), (0, 0, 0))
+    rings_draw = ImageDraw.Draw(rings_layer)
+    glow = Image.new("RGB", (canvas_px, canvas_px), (0, 0, 0))
+    glow_draw = ImageDraw.Draw(glow)
+
+    width = step * 0.55
+    for i in range(rings):
+        radius = center - (padding + i * step)
+        _draw_ring(rings_draw, glow_draw, center, radius, width,
+                   _flow_color(i, rings, lo, hi, phase))
+
+    return _finish_frame(canvas_px, rings_layer, glow, scale_factor, target_size)
+
+
+FPS_CHOICES = (20, 25, 50)  # only fps that map to exact GIF frame delays (1/100s)
+STYLES = {
+    "ripple": render_ripple_frame,
+    "rippleflow": functools.partial(render_ripple_frame, flow=True),
+    "flow": render_flow_frame,
+}
+
+
+def generate_gif(save_path: str, target_size: int = 256, rings: int = 16,
+                 fps: int = 25, style: str = "ripple"):
+    # The loop is always one second: one frame per fps. fps is restricted to
+    # values that divide cleanly into GIF's 1/100s frame delays, so timing is
+    # always even (50/40/20 ms) and the loop is perfect.
+    frames = fps
+    scale_factor = 4
+    canvas_px = target_size * scale_factor
+    padding = 4 * scale_factor
+
+    # Same color-slice setup as the static generator.
+    lo = random.uniform(0.0, 0.55)
+    hi = lo + random.uniform(0.35, 1.0 - lo)
+    if random.random() < 0.5:
+        lo, hi = hi, lo  # flow inward or outward
+
+    center = canvas_px / 2
+    step = (canvas_px - 2 * padding) / (2 * rings)
+
+    render = STYLES[style]
+    images = [render(canvas_px, center, step, padding, rings, lo, hi,
+                     frame / frames, scale_factor, target_size)
+              for frame in range(frames)]
+
+    images[0].save(save_path, save_all=True, append_images=images[1:], loop=0,
+                   duration=round(1000 / fps), disposal=2)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Generate concentric-circle art.")
     parser.add_argument("-n", "--count", type=int, default=16,
@@ -128,6 +264,15 @@ def main():
                         help="number of rings per image (default: 16)")
     parser.add_argument("-o", "--out-dir", default="imgs",
                         help="output directory (default: imgs)")
+    parser.add_argument("--gif", action="store_true",
+                        help="render a seamless looping GIF instead of static PNGs")
+    parser.add_argument("--style", choices=sorted(STYLES), default="ripple",
+                        help="GIF motion: 'ripple' (rings drift inward), 'flow' "
+                             "(still rings, color flows inward), or 'rippleflow' "
+                             "(both at once) (default: ripple)")
+    parser.add_argument("--fps", type=int, default=25, choices=FPS_CHOICES,
+                        help="GIF speed and smoothness; the loop is always 1s "
+                             "(default: 25)")
     parser.add_argument("--seed", type=int, default=None,
                         help="random seed for reproducible output")
     args = parser.parse_args()
@@ -135,10 +280,15 @@ def main():
     if args.seed is not None:
         random.seed(args.seed)
 
+    ext = "gif" if args.gif else "png"
     os.makedirs(args.out_dir, exist_ok=True)
     for i in range(args.count):
-        path = os.path.join(args.out_dir, f"circle_{i}.png")
-        generator(path, target_size=args.size, rings=args.rings)
+        path = os.path.join(args.out_dir, f"circle_{i}.{ext}")
+        if args.gif:
+            generate_gif(path, target_size=args.size, rings=args.rings,
+                         fps=args.fps, style=args.style)
+        else:
+            generator(path, target_size=args.size, rings=args.rings)
         print(f"saved {path}")
 
 

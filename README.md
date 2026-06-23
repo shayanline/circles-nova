@@ -44,6 +44,29 @@ rendering and color were reimagined.
 - **A proper CLI.** Control the number of images, size, ring count, output
   directory, and a random seed for reproducible output.
 
+## Animated GIFs
+
+Pass `--gif` to render a seamless looping GIF instead of static PNGs. Pick the
+motion with `--style`:
+
+| `ripple` | `flow` | `rippleflow` |
+|:--------:|:------:|:------------:|
+| ![ripple](examples/ripple.gif) | ![flow](examples/flow.gif) | ![rippleflow](examples/rippleflow.gif) |
+| rings drift inward | rings still, color flows inward | both at once |
+
+The outermost ring is pinned in place and new rings are born behind it, so
+nothing ever pops or fades in the rim. The loop is always exactly one second:
+the single `--fps` knob sets both speed and smoothness, and is limited to 20,
+25, or 50, the only rates that map to GIF's 1/100s frame delays exactly, so the
+timing is always even and the loop is always perfect.
+
+```bash
+python main.py --gif                     # ripple GIFs into imgs/
+python main.py --gif --style flow         # still rings, flowing color
+python main.py --gif --style rippleflow   # both
+python main.py --gif --fps 50             # smoothest
+```
+
 ## Usage
 
 ```bash
@@ -51,6 +74,7 @@ pip install -r requirements.txt
 python main.py                 # 16 images into imgs/
 python main.py --seed 7        # reproducible output
 python main.py -n 8 -s 512 -r 20
+python main.py --gif -s 512    # 512px looping GIFs
 ```
 
 ### Options
@@ -60,6 +84,9 @@ python main.py -n 8 -s 512 -r 20
 -s, --size     output image size in pixels (default: 256)
 -r, --rings    number of rings per image (default: 16)
 -o, --out-dir  output directory (default: imgs)
+    --gif      render a seamless looping GIF instead of static PNGs
+    --style    GIF motion: ripple, flow, or rippleflow (default: ripple)
+    --fps      GIF speed and smoothness: 20, 25, or 50; loop is always 1s (default: 25)
     --seed     random seed for reproducible output
 ```
 
