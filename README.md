@@ -44,6 +44,28 @@ rendering and color were reimagined.
 - **A proper CLI.** Control the number of images, size, ring count, output
   directory, and a random seed for reproducible output.
 
+## Output size & quality
+
+- `--size` sets the pixel dimensions and is the real resolution lever. Images
+  are always rendered at 4x and downscaled, so larger sizes stay crisp.
+- `--dpi` writes DPI metadata onto the saved PNG for print sizing. It does not
+  change the pixels, only how large the image prints (use `--size` for detail).
+
+```bash
+python main.py -s 1024 --dpi 300   # high-res, print-ready PNGs
+```
+
+The same center detail, enlarged, from a low and a high `--size` render. More
+size means more real detail:
+
+| `--size 256` | `--size 1024` |
+|:------------:|:-------------:|
+| ![low size](examples/detail-256px.png) | ![high size](examples/detail-1024px.png) |
+
+A full high-res sample (`-s 512 --dpi 300`):
+
+![high-res sample](examples/quality.png)
+
 ## Usage
 
 ```bash
@@ -51,6 +73,7 @@ pip install -r requirements.txt
 python main.py                 # 16 images into imgs/
 python main.py --seed 7        # reproducible output
 python main.py -n 8 -s 512 -r 20
+python main.py -s 1024 --dpi 300
 ```
 
 ### Options
@@ -60,6 +83,7 @@ python main.py -n 8 -s 512 -r 20
 -s, --size     output image size in pixels (default: 256)
 -r, --rings    number of rings per image (default: 16)
 -o, --out-dir  output directory (default: imgs)
+    --dpi      DPI metadata for saved files (print sizing; default: unset)
     --seed     random seed for reproducible output
 ```
 

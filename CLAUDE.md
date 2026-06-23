@@ -10,7 +10,7 @@ concentric, gradient-colored rings with a soft glow.
 - `main.py` — the whole program.
   - `random_color()` — vivid random RGB via HSV.
   - `interpolate(start, end, factor)` — linear color blend.
-  - `generator(save_path, target_size, rings)` — renders one image. Draws
+  - `generator(save_path, target_size, rings, dpi)` — renders one image. Draws
     nested ellipses at `scale_factor`x resolution, additively blends them,
     adds a Gaussian-blurred glow layer, then downscales with LANCZOS.
   - `main()` — argparse CLI; writes `circle_{i}.png` files into the output dir.

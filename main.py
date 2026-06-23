@@ -66,7 +66,8 @@ def interpolate(start_color, end_color, factor: float):
     )
 
 
-def generator(save_path: str, target_size: int = 256, rings: int = 16):
+def generator(save_path: str, target_size: int = 256, rings: int = 16,
+              dpi: int = None):
     # Render at a higher resolution, then shrink down at the end. This is what
     # gives the rings clean, anti-aliased edges instead of jagged pixels.
     scale_factor = 4
@@ -115,7 +116,8 @@ def generator(save_path: str, target_size: int = 256, rings: int = 16):
 
     # Downscale to the target size (this is the step the original code dropped).
     image = image.resize((target_size, target_size), resample=Image.Resampling.LANCZOS)
-    image.save(save_path)
+    # `--size` sets the real resolution; `dpi` only tags the file for print sizing.
+    image.save(save_path, **({"dpi": (dpi, dpi)} if dpi else {}))
 
 
 def main():
@@ -128,6 +130,8 @@ def main():
                         help="number of rings per image (default: 16)")
     parser.add_argument("-o", "--out-dir", default="imgs",
                         help="output directory (default: imgs)")
+    parser.add_argument("--dpi", type=int, default=None,
+                        help="DPI metadata for saved files (print sizing; default: unset)")
     parser.add_argument("--seed", type=int, default=None,
                         help="random seed for reproducible output")
     args = parser.parse_args()
@@ -138,7 +142,7 @@ def main():
     os.makedirs(args.out_dir, exist_ok=True)
     for i in range(args.count):
         path = os.path.join(args.out_dir, f"circle_{i}.png")
-        generator(path, target_size=args.size, rings=args.rings)
+        generator(path, target_size=args.size, rings=args.rings, dpi=args.dpi)
         print(f"saved {path}")
 
 
