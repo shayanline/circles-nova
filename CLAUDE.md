@@ -15,8 +15,9 @@ concentric, gradient-colored rings with a soft glow.
     adds a Gaussian-blurred glow layer, then downscales with LANCZOS.
   - `generate_gif(save_path, ..., style)` — render a seamless 1s looping GIF.
     Styles via `STYLES`: `ripple` (rings drift inward), `flow` (still rings,
-    color flows), `rippleflow` (both); `render_ripple_frame`/`render_flow_frame`
-    draw the frames and `_finish_frame` composites them.
+    color flows), `rippleflow` (both), `tunnel` (geometric spacing scaled one
+    ratio per loop = infinite zoom); `render_*_frame` draw the frames and
+    `_finish_frame` composites them.
   - `main()` — argparse CLI; writes `circle_{i}.png` (or `.gif` with `--gif`)
     files into the output dir.
 - `imgs/` — generated output (also used by the README gallery).

@@ -218,11 +218,50 @@ def render_flow_frame(canvas_px, center, step, padding, rings, lo, hi,
     return _finish_frame(canvas_px, rings_layer, glow, scale_factor, target_size)
 
 
+def render_tunnel_frame(canvas_px, center, step, padding, rings, lo, hi,
+                        phase, scale_factor, target_size):
+    """Infinite-zoom tunnel: fall endlessly into the circle.
+
+    Ring radii are spaced geometrically and the whole field scales by exactly
+    one ratio per loop, so each ring lands where the next one was: a perfectly
+    seamless zoom. Rings grow outward and exit past the frame while new ones
+    emerge at the center; thickness scales with depth and the color flows with
+    it, so it reads as perspective.
+    """
+    rings_layer = Image.new("RGB", (canvas_px, canvas_px), (0, 0, 0))
+    rings_draw = ImageDraw.Draw(rings_layer)
+    glow = Image.new("RGB", (canvas_px, canvas_px), (0, 0, 0))
+    glow_draw = ImageDraw.Draw(glow)
+
+    ratio = 1.0 + 2.4 / rings  # each ring this much bigger than the one before
+    corner = center * 1.41421356  # beyond this a ring is fully off-frame
+    r_min = step * 0.6  # smallest ring near the vanishing point
+
+    k = -2  # start a touch inside so new rings emerge from the center, not pop
+    while True:
+        radius = r_min * ratio ** (k + phase)
+        k += 1
+        if radius > corner:
+            break
+        width = radius * (ratio - 1.0) * 0.55  # thickness scales with depth
+        # Fade the tiniest rings in at the vanishing point (a pure function of
+        # radius, hence of k+phase, so the loop stays seamless).
+        fade = max(0.0, min(1.0, (radius / r_min - 1.0 / ratio) / (1.0 - 1.0 / ratio)))
+        alpha = fade * fade * (3 - 2 * fade)
+        if alpha <= 0:
+            continue
+        color = _flow_color(k + phase, rings, lo, hi, 0.0)
+        _draw_ring(rings_draw, glow_draw, center, radius, width, color, alpha)
+
+    return _finish_frame(canvas_px, rings_layer, glow, scale_factor, target_size)
+
+
 FPS_CHOICES = (20, 25, 50)  # only fps that map to exact GIF frame delays (1/100s)
 STYLES = {
     "ripple": render_ripple_frame,
     "rippleflow": functools.partial(render_ripple_frame, flow=True),
     "flow": render_flow_frame,
+    "tunnel": render_tunnel_frame,
 }
 
 
@@ -268,8 +307,8 @@ def main():
                         help="render a seamless looping GIF instead of static PNGs")
     parser.add_argument("--style", choices=sorted(STYLES), default="ripple",
                         help="GIF motion: 'ripple' (rings drift inward), 'flow' "
-                             "(still rings, color flows inward), or 'rippleflow' "
-                             "(both at once) (default: ripple)")
+                             "(still rings, color flows inward), 'rippleflow' "
+                             "(both), or 'tunnel' (infinite zoom) (default: ripple)")
     parser.add_argument("--fps", type=int, default=25, choices=FPS_CHOICES,
                         help="GIF speed and smoothness; the loop is always 1s "
                              "(default: 25)")

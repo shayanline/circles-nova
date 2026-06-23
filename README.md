@@ -49,21 +49,24 @@ rendering and color were reimagined.
 Pass `--gif` to render a seamless looping GIF instead of static PNGs. Pick the
 motion with `--style`:
 
-| `ripple` | `flow` | `rippleflow` |
-|:--------:|:------:|:------------:|
-| ![ripple](examples/ripple.gif) | ![flow](examples/flow.gif) | ![rippleflow](examples/rippleflow.gif) |
-| rings drift inward | rings still, color flows inward | both at once |
+| `ripple` | `flow` | `rippleflow` | `tunnel` |
+|:--------:|:------:|:------------:|:--------:|
+| ![ripple](examples/ripple.gif) | ![flow](examples/flow.gif) | ![rippleflow](examples/rippleflow.gif) | ![tunnel](examples/tunnel.gif) |
+| rings drift inward | rings still, color flows inward | both at once | infinite zoom |
 
-The outermost ring is pinned in place and new rings are born behind it, so
-nothing ever pops or fades in the rim. The loop is always exactly one second:
-the single `--fps` knob sets both speed and smoothness, and is limited to 20,
-25, or 50, the only rates that map to GIF's 1/100s frame delays exactly, so the
-timing is always even and the loop is always perfect.
+`tunnel` spaces the rings geometrically and scales the whole field by exactly
+one ratio per loop, so you fall endlessly into the circle with no seam. For the
+other styles the outermost ring is pinned and new rings are born behind it, so
+nothing pops or fades in the rim. The loop is always exactly one second: the
+single `--fps` knob sets both speed and smoothness, and is limited to 20, 25, or
+50, the only rates that map to GIF's 1/100s frame delays exactly, so the timing
+is always even and the loop is always perfect.
 
 ```bash
 python main.py --gif                     # ripple GIFs into imgs/
 python main.py --gif --style flow         # still rings, flowing color
 python main.py --gif --style rippleflow   # both
+python main.py --gif --style tunnel       # infinite zoom
 python main.py --gif --fps 50             # smoothest
 ```
 
@@ -85,7 +88,7 @@ python main.py --gif -s 512    # 512px looping GIFs
 -r, --rings    number of rings per image (default: 16)
 -o, --out-dir  output directory (default: imgs)
     --gif      render a seamless looping GIF instead of static PNGs
-    --style    GIF motion: ripple, flow, or rippleflow (default: ripple)
+    --style    GIF motion: ripple, flow, rippleflow, or tunnel (default: ripple)
     --fps      GIF speed and smoothness: 20, 25, or 50; loop is always 1s (default: 25)
     --seed     random seed for reproducible output
 ```
