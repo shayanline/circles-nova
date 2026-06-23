@@ -12,28 +12,68 @@ import random
 from PIL import Image, ImageDraw, ImageChops, ImageFilter
 
 
-# A lush abstract-painting gradient: warm sunset melting into deep ocean.
-# Neighboring stops are harmonious, so any continuous slice flows beautifully.
-PALETTE = [
-    (255, 138, 40),   # orange
-    (255, 94, 86),    # coral
-    (232, 64, 120),   # rose
-    (188, 55, 168),   # magenta
-    (120, 60, 200),   # violet
-    (66, 72, 206),    # indigo / blue
-    (40, 128, 196),   # azure
-    (44, 176, 164),   # teal
-]
+# Named themes. Each is a list of harmonious color stops; neighboring stops
+# blend cleanly, so any continuous slice flows beautifully from one ring to the
+# next. "nova" is the original lush abstract-painting gradient.
+THEMES = {
+    # warm sunset melting into deep ocean (the original palette)
+    "nova": [
+        (255, 138, 40),   # orange
+        (255, 94, 86),    # coral
+        (232, 64, 120),   # rose
+        (188, 55, 168),   # magenta
+        (120, 60, 200),   # violet
+        (66, 72, 206),    # indigo / blue
+        (40, 128, 196),   # azure
+        (44, 176, 164),   # teal
+    ],
+    # dusk over a desert: gold burning down into night purple
+    "sunset": [
+        (255, 209, 102),  # gold
+        (255, 138, 40),   # orange
+        (240, 86, 70),    # ember red
+        (199, 54, 99),    # crimson rose
+        (122, 42, 122),   # plum
+        (58, 38, 96),      # night purple
+    ],
+    # frozen palette: icy whites and glacier blues
+    "arctic": [
+        (233, 247, 255),  # snow
+        (176, 224, 246),  # ice
+        (120, 188, 230),  # glacier
+        (74, 144, 214),   # deep blue
+        (46, 92, 173),    # polar night
+    ],
+    # electric, high-voltage colors that pop on black
+    "neon": [
+        (57, 255, 136),   # acid green
+        (0, 245, 212),    # cyan
+        (0, 187, 249),    # electric blue
+        (155, 93, 229),   # ultraviolet
+        (241, 91, 181),   # hot pink
+        (255, 236, 39),   # laser yellow
+    ],
+    # black & white: a silver-to-white grayscale ramp
+    "mono": [
+        (45, 45, 45),     # charcoal
+        (105, 105, 105),  # graphite
+        (160, 160, 160),  # silver
+        (210, 210, 210),  # light grey
+        (245, 245, 245),  # near white
+    ],
+}
+
+DEFAULT_THEME = "nova"
 
 
-def palette_color(pos: float):
-    """Sample the painting palette at pos in [0, 1] (0 = orange, 1 = teal)."""
+def palette_color(pos: float, palette):
+    """Sample a theme palette at pos in [0, 1] (0 = first stop, 1 = last)."""
     pos = max(0.0, min(1.0, pos))
-    scaled = pos * (len(PALETTE) - 1)
+    scaled = pos * (len(palette) - 1)
     i = int(scaled)
-    if i >= len(PALETTE) - 1:
-        return PALETTE[-1]
-    return interpolate(PALETTE[i], PALETTE[i + 1], scaled - i)
+    if i >= len(palette) - 1:
+        return palette[-1]
+    return interpolate(palette[i], palette[i + 1], scaled - i)
 
 
 def draw_tube_ring(draw, center, radius, width, color):
@@ -66,7 +106,10 @@ def interpolate(start_color, end_color, factor: float):
     )
 
 
-def generator(save_path: str, target_size: int = 256, rings: int = 16):
+def generator(save_path: str, target_size: int = 256, rings: int = 16,
+              theme: str = DEFAULT_THEME):
+    palette = THEMES[theme]
+
     # Render at a higher resolution, then shrink down at the end. This is what
     # gives the rings clean, anti-aliased edges instead of jagged pixels.
     scale_factor = 4
@@ -101,7 +144,7 @@ def generator(save_path: str, target_size: int = 256, rings: int = 16):
         # it feels hand-painted rather than perfectly mechanical.
         f = i / max(1, rings - 1)
         pos = lo + (hi - lo) * f + random.uniform(-0.03, 0.03)
-        circle_color = palette_color(pos)
+        circle_color = palette_color(pos, palette)
 
         draw_tube_ring(rings_draw, center, radius, width, circle_color)
         glow_draw.ellipse((center - radius, center - radius,
@@ -128,6 +171,9 @@ def main():
                         help="number of rings per image (default: 16)")
     parser.add_argument("-o", "--out-dir", default="imgs",
                         help="output directory (default: imgs)")
+    parser.add_argument("-t", "--theme", choices=sorted(THEMES), default=DEFAULT_THEME,
+                        help=f"color theme (default: {DEFAULT_THEME}); "
+                             "'mono' is black & white")
     parser.add_argument("--seed", type=int, default=None,
                         help="random seed for reproducible output")
     args = parser.parse_args()
@@ -138,7 +184,7 @@ def main():
     os.makedirs(args.out_dir, exist_ok=True)
     for i in range(args.count):
         path = os.path.join(args.out_dir, f"circle_{i}.png")
-        generator(path, target_size=args.size, rings=args.rings)
+        generator(path, target_size=args.size, rings=args.rings, theme=args.theme)
         print(f"saved {path}")
 
 

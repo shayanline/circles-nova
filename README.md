@@ -42,7 +42,23 @@ rendering and color were reimagined.
 - **A limited soft glow.** A faint blurred halo under the rings for depth,
   kept subtle on purpose.
 - **A proper CLI.** Control the number of images, size, ring count, output
-  directory, and a random seed for reproducible output.
+  directory, color theme, and a random seed for reproducible output.
+
+## Themes
+
+Pick a palette with `--theme`:
+
+- `nova` (default): the lush orange to teal painting gradient.
+- `sunset`: gold burning down into night purple.
+- `arctic`: icy whites and glacier blues.
+- `neon`: electric colors that pop on black.
+- `mono`: black & white (a silver to white grayscale ramp).
+
+The same image (`--seed 21`) rendered in each theme:
+
+| nova | sunset | arctic | neon | mono |
+|:----:|:------:|:------:|:----:|:----:|
+| ![nova](examples/theme-nova.png) | ![sunset](examples/theme-sunset.png) | ![arctic](examples/theme-arctic.png) | ![neon](examples/theme-neon.png) | ![mono](examples/theme-mono.png) |
 
 ## Usage
 
@@ -51,6 +67,7 @@ pip install -r requirements.txt
 python main.py                 # 16 images into imgs/
 python main.py --seed 7        # reproducible output
 python main.py -n 8 -s 512 -r 20
+python main.py --theme mono    # black & white
 ```
 
 ### Options
@@ -60,6 +77,7 @@ python main.py -n 8 -s 512 -r 20
 -s, --size     output image size in pixels (default: 256)
 -r, --rings    number of rings per image (default: 16)
 -o, --out-dir  output directory (default: imgs)
+-t, --theme    color theme: nova, sunset, arctic, neon, mono (default: nova)
     --seed     random seed for reproducible output
 ```
 
