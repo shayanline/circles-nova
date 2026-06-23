@@ -114,7 +114,7 @@ def generator(save_path: str, target_size: int = 256, rings: int = 16,
         circle_color = palette_color(pos)
 
         _draw_ring(rings_draw, glow_draw, center, radius, width, circle_color,
-                   factors=factors)
+                   factors=factors, anchor=center - padding)
 
     # Composite: dark canvas -> soft halo (limited) -> crisp tube rings on top.
     glow = glow.filter(ImageFilter.GaussianBlur(radius=scale_factor * 2))
@@ -200,19 +200,26 @@ def shape_factors_for(shape, phase=0.0):
     return _centered([av + (bv - av) * frac for av, bv in zip(a, b)])
 
 
-def _shape_xy(center, radius, shape):
+def _shape_xy(center, radius, shape, anchor=None):
+    # The shape is recentered by its bbox offset. `anchor` is the radius that
+    # offset scales with: pass a fixed value (the outer ring) so a concentric
+    # stack shares one offset and keeps uniform edge spacing (otherwise the
+    # edges nearest the center pack tighter than the far ones, e.g. a triangle's
+    # apex reads denser than its base). None scales the offset with this ring.
     factors, ox, oy = shape
+    a = radius if anchor is None else anchor
     n = len(factors)
-    return [(center + radius * (factors[j] * math.cos(_angle(j, n)) - ox),
-             center + radius * (factors[j] * math.sin(_angle(j, n)) - oy))
+    return [(center + radius * factors[j] * math.cos(_angle(j, n)) - a * ox,
+             center + radius * factors[j] * math.sin(_angle(j, n)) - a * oy)
             for j in range(n)]
 
 
 def _draw_ring(rings_draw, glow_draw, center, radius, width, color, alpha=1.0,
-               factors=None):
+               factors=None, anchor=None):
     """Draw one ring onto the crisp and glow layers, dimmed by alpha. With
     `factors` (a shape's per-angle radii) the ring is a polygon instead of a
-    circle; without it the fast ellipse path is used (unchanged)."""
+    circle; without it the fast ellipse path is used (unchanged). `anchor` fixes
+    the bbox-offset radius so a concentric stack keeps uniform edge spacing."""
     glow_color = interpolate((0, 0, 0), color, alpha) if alpha < 1.0 else color
     if factors is None:
         draw_tube_ring(rings_draw, center, radius, width, color, alpha)
@@ -232,9 +239,9 @@ def _draw_ring(rings_draw, glow_draw, center, radius, width, color, alpha=1.0,
         shade = interpolate(dark, light, val)
         if alpha < 1.0:
             shade = interpolate((0, 0, 0), shade, alpha)
-        pts = _shape_xy(center, rr, factors)
+        pts = _shape_xy(center, rr, factors, anchor)
         rings_draw.line(pts + [pts[0]], fill=shade, width=2, joint="curve")
-    gpts = _shape_xy(center, radius, factors)
+    gpts = _shape_xy(center, radius, factors, anchor)
     glow_draw.line(gpts + [gpts[0]], fill=glow_color, width=int(width), joint="curve")
 
 
@@ -293,12 +300,12 @@ def render_ripple_frame(canvas_px, center, step, padding, rings, lo, hi,
         else:
             color = palette_color(lo + (hi - lo) * (eff / max(1, rings - 1)))
         _draw_ring(rings_draw, glow_draw, center, radius, width, color, alpha,
-                   factors)
+                   factors, anchor=center - padding)
 
     # Permanent outermost ring, drawn LAST so it is never overwritten and stays
     # exactly the same every frame, masking where the next ring is born.
     _draw_ring(rings_draw, glow_draw, center, center - padding, width,
-               palette_color(lo), factors=factors)
+               palette_color(lo), factors=factors, anchor=center - padding)
 
     return _finish_frame(canvas_px, rings_layer, glow, scale_factor, target_size)
 
@@ -321,7 +328,8 @@ def render_flow_frame(canvas_px, center, step, padding, rings, lo, hi,
     for i in range(rings):
         radius = center - (padding + i * step)
         _draw_ring(rings_draw, glow_draw, center, radius, width,
-                   _flow_color(i, rings, lo, hi, phase), factors=factors)
+                   _flow_color(i, rings, lo, hi, phase), factors=factors,
+                   anchor=center - padding)
 
     return _finish_frame(canvas_px, rings_layer, glow, scale_factor, target_size)
 
