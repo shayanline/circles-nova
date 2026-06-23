@@ -7,6 +7,7 @@
 
 import argparse
 import functools
+import math
 import os
 import random
 
@@ -218,11 +219,164 @@ def render_flow_frame(canvas_px, center, step, padding, rings, lo, hi,
     return _finish_frame(canvas_px, rings_layer, glow, scale_factor, target_size)
 
 
+def _draw_offset_ring(rings_draw, glow_draw, cx, cy, radius, width, color,
+                      alpha=1.0):
+    """Like the standard ring, but at an arbitrary (cx, cy) so rings can sit
+    off the canvas center. Used by the trippy styles that swirl or duplicate
+    rings away from the middle."""
+    if radius <= 0:
+        return
+    dark = interpolate(color, (0, 0, 0), 0.65)
+    light = interpolate(color, (255, 255, 255), 0.6)
+    steps = max(3, int(width))
+    for s in range(steps + 1):
+        t = s / steps
+        rr = radius - width / 2 + t * width
+        if rr <= 0:
+            continue
+        val = max(0.0, 1 - ((t - 0.42) / 0.5) ** 2)
+        shade = interpolate(dark, light, val)
+        if alpha < 1.0:
+            shade = interpolate((0, 0, 0), shade, alpha)
+        rings_draw.ellipse((cx - rr, cy - rr, cx + rr, cy + rr),
+                           outline=shade, width=2)
+    glow_color = interpolate((0, 0, 0), color, alpha) if alpha < 1.0 else color
+    glow_draw.ellipse((cx - radius, cy - radius, cx + radius, cy + radius),
+                      outline=glow_color, width=int(width))
+
+
+def render_twist_frame(canvas_px, center, step, padding, rings, lo, hi,
+                       phase, scale_factor, target_size):
+    """A hypnotic vortex: nested rings whose centers spiral away from the
+    middle, further the deeper they go, and the whole spiral winds round once
+    per loop so it turns forever without a seam."""
+    rings_layer = Image.new("RGB", (canvas_px, canvas_px), (0, 0, 0))
+    rings_draw = ImageDraw.Draw(rings_layer)
+    glow = Image.new("RGB", (canvas_px, canvas_px), (0, 0, 0))
+    glow_draw = ImageDraw.Draw(glow)
+
+    width = step * 0.55
+    swirl = 2.6   # how far the deepest rings drift off-center (in ring-steps)
+    winds = 1.0   # extra turns the spiral makes from rim to core
+    for i in range(rings):
+        radius = center - (padding + i * step)
+        if radius <= width:
+            continue
+        depth = i / max(1, rings - 1)          # 0 at the rim, 1 at the core
+        off = swirl * step * depth
+        ang = 2 * math.pi * (winds * depth + phase)
+        cx = center + off * math.cos(ang)
+        cy = center + off * math.sin(ang)
+        color = palette_color(lo + (hi - lo) * depth)
+        _draw_offset_ring(rings_draw, glow_draw, cx, cy, radius, width, color)
+
+    return _finish_frame(canvas_px, rings_layer, glow, scale_factor, target_size)
+
+
+def _breathe(x):
+    """Asymmetric breath wave, period 1: a quick inhale and a long exhale. It
+    is a sine warped by its own phase, which stays perfectly periodic (so the
+    loop is seamless) but is no longer a symmetric in-and-out pulse."""
+    a = 2 * math.pi * (x % 1.0)
+    return math.sin(a + 0.6 * math.sin(a))
+
+
+def render_breathing_frame(canvas_px, center, step, padding, rings, lo, hi,
+                           phase, scale_factor, target_size):
+    """Centered rings that swell and shrink like a breathing chest. The breath
+    travels inward (each ring lags the one outside it) and is deliberately
+    lop-sided: a fast inhale and a slow exhale."""
+    rings_layer = Image.new("RGB", (canvas_px, canvas_px), (0, 0, 0))
+    rings_draw = ImageDraw.Draw(rings_layer)
+    glow = Image.new("RGB", (canvas_px, canvas_px), (0, 0, 0))
+    glow_draw = ImageDraw.Draw(glow)
+
+    width = step * 0.55
+    amp = 0.45 * step
+    for i in range(rings):
+        base = center - (padding + i * step)
+        depth = i / max(1, rings - 1)
+        radius = base + amp * _breathe(phase - 0.5 * depth)
+        if radius <= width:
+            continue
+        color = palette_color(lo + (hi - lo) * depth)
+        _draw_ring(rings_draw, glow_draw, center, radius, width, color)
+
+    return _finish_frame(canvas_px, rings_layer, glow, scale_factor, target_size)
+
+
+def _fold_symmetry(image, segments):
+    """Fold a frame into a kaleidoscope: max-blend rotated copies (the near
+    black background is untouched, only the bright rings combine) for n-fold
+    rotational symmetry, then mirror once for reflection symmetry."""
+    folded = image
+    for k in range(1, segments):
+        folded = ImageChops.lighter(
+            folded, image.rotate(360.0 * k / segments,
+                                 resample=Image.Resampling.BICUBIC))
+    return ImageChops.lighter(folded,
+                              folded.transpose(Image.Transpose.FLIP_LEFT_RIGHT))
+
+
+def render_kaleidoscope_frame(canvas_px, center, step, padding, rings, lo, hi,
+                              phase, scale_factor, target_size):
+    """A turning mandala. One lop-sided cluster of rings orbits the center over
+    the loop, then the frame is folded into six mirrored segments, so the
+    single cluster becomes a symmetric, slowly rotating kaleidoscope."""
+    rings_layer = Image.new("RGB", (canvas_px, canvas_px), (0, 0, 0))
+    rings_draw = ImageDraw.Draw(rings_layer)
+    glow = Image.new("RGB", (canvas_px, canvas_px), (0, 0, 0))
+    glow_draw = ImageDraw.Draw(glow)
+
+    reach = canvas_px / 2 - padding
+    width = step * 0.6
+    ang = 2 * math.pi * phase
+    cx = center + reach * 0.45 * math.cos(ang)
+    cy = center + reach * 0.45 * math.sin(ang)
+    cluster = max(4, rings // 2)
+    for i in range(cluster):
+        radius = reach * 0.32 - i * step * 0.9
+        if radius <= width:
+            continue
+        color = palette_color(lo + (hi - lo) * (i / max(1, cluster - 1)))
+        _draw_offset_ring(rings_draw, glow_draw, cx, cy, radius, width, color)
+
+    frame = _finish_frame(canvas_px, rings_layer, glow, scale_factor, target_size)
+    return _fold_symmetry(frame, 6)
+
+
+def render_interference_frame(canvas_px, center, step, padding, rings, lo, hi,
+                              phase, scale_factor, target_size):
+    """Two families of fine concentric rings drawn from two centers that drift
+    apart and back together, so their overlap ripples with shifting moire
+    bands. The separation follows a cosine, so it returns to the start."""
+    rings_layer = Image.new("RGB", (canvas_px, canvas_px), (0, 0, 0))
+    rings_draw = ImageDraw.Draw(rings_layer)
+    glow = Image.new("RGB", (canvas_px, canvas_px), (0, 0, 0))
+    glow_draw = ImageDraw.Draw(glow)
+
+    width = step * 0.42
+    sep = (canvas_px / 2 - padding) * 0.22 * (0.5 - 0.5 * math.cos(2 * math.pi * phase))
+    count = int((canvas_px / 2) / step) + rings  # plenty of rings for clear moire
+    for sign, pos in ((-1, lo), (1, hi)):
+        cx = center + sign * sep
+        color = palette_color(pos)
+        for i in range(count):
+            radius = (i + 0.5) * step
+            _draw_offset_ring(rings_draw, glow_draw, cx, center, radius, width, color)
+
+    return _finish_frame(canvas_px, rings_layer, glow, scale_factor, target_size)
+
+
 FPS_CHOICES = (20, 25, 50)  # only fps that map to exact GIF frame delays (1/100s)
 STYLES = {
     "ripple": render_ripple_frame,
     "rippleflow": functools.partial(render_ripple_frame, flow=True),
     "flow": render_flow_frame,
+    "twist": render_twist_frame,
+    "breathing": render_breathing_frame,
+    "kaleidoscope": render_kaleidoscope_frame,
+    "interference": render_interference_frame,
 }
 
 
@@ -268,8 +422,11 @@ def main():
                         help="render a seamless looping GIF instead of static PNGs")
     parser.add_argument("--style", choices=sorted(STYLES), default="ripple",
                         help="GIF motion: 'ripple' (rings drift inward), 'flow' "
-                             "(still rings, color flows inward), or 'rippleflow' "
-                             "(both at once) (default: ripple)")
+                             "(still rings, color flows inward), 'rippleflow' "
+                             "(both), 'twist' (spiralling vortex), 'breathing' "
+                             "(asymmetric in/out pulse), 'kaleidoscope' "
+                             "(rotating mandala) or 'interference' (drifting "
+                             "moire) (default: ripple)")
     parser.add_argument("--fps", type=int, default=25, choices=FPS_CHOICES,
                         help="GIF speed and smoothness; the loop is always 1s "
                              "(default: 25)")

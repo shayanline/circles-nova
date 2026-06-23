@@ -60,10 +60,26 @@ the single `--fps` knob sets both speed and smoothness, and is limited to 20,
 25, or 50, the only rates that map to GIF's 1/100s frame delays exactly, so the
 timing is always even and the loop is always perfect.
 
+### Trippy motion pack
+
+Four more hypnotic styles, all seamless one-second loops:
+
+| `twist` | `breathing` | `kaleidoscope` | `interference` |
+|:-------:|:-----------:|:--------------:|:--------------:|
+| ![twist](examples/twist.gif) | ![breathing](examples/breathing.gif) | ![kaleidoscope](examples/kaleidoscope.gif) | ![interference](examples/interference.gif) |
+| spiralling vortex | asymmetric in/out pulse | rotating mandala | drifting moire |
+
+- **twist** spirals the rings off-center, further the deeper they go, and winds the whole vortex round once per loop.
+- **breathing** swells and shrinks the rings like a chest, deliberately lop-sided (a quick inhale, a slow exhale) and travelling inward.
+- **kaleidoscope** orbits one off-center cluster and folds the frame into six mirrored segments, so it reads as a slowly turning mandala.
+- **interference** overlays two families of fine rings from two centers that drift apart and back, rippling with shifting moire bands.
+
 ```bash
 python main.py --gif                     # ripple GIFs into imgs/
 python main.py --gif --style flow         # still rings, flowing color
 python main.py --gif --style rippleflow   # both
+python main.py --gif --style twist        # spiralling vortex
+python main.py --gif --style interference # drifting moire
 python main.py --gif --fps 50             # smoothest
 ```
 
@@ -85,7 +101,8 @@ python main.py --gif -s 512    # 512px looping GIFs
 -r, --rings    number of rings per image (default: 16)
 -o, --out-dir  output directory (default: imgs)
     --gif      render a seamless looping GIF instead of static PNGs
-    --style    GIF motion: ripple, flow, or rippleflow (default: ripple)
+    --style    GIF motion: ripple, flow, rippleflow, twist, breathing,
+               kaleidoscope, interference (default: ripple)
     --fps      GIF speed and smoothness: 20, 25, or 50; loop is always 1s (default: 25)
     --seed     random seed for reproducible output
 ```
