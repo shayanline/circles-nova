@@ -123,6 +123,28 @@ python main.py --shape hexagon -s 512     # bigger hexagons
 python main.py --gif --shape morph        # rings morph shape over the loop
 ```
 
+## Output size & quality
+
+- `--size` sets the pixel dimensions and is the real resolution lever. Images
+  are always rendered at 4x and downscaled, so larger sizes stay crisp.
+- `--dpi` writes DPI metadata onto the saved PNG for print sizing. It does not
+  change the pixels, only how large the image prints (use `--size` for detail).
+
+```bash
+python main.py -s 1024 --dpi 300   # high-res, print-ready PNGs
+```
+
+The same center detail, enlarged, from a low and a high `--size` render. More
+size means more real detail:
+
+| `--size 256` | `--size 1024` |
+|:------------:|:-------------:|
+| ![low size](examples/detail-256px.png) | ![high size](examples/detail-1024px.png) |
+
+A full high-res sample (`-s 512 --dpi 300`):
+
+![high-res sample](examples/quality.png)
+
 ## Usage
 
 ```bash
@@ -132,6 +154,7 @@ python main.py --seed 7        # reproducible output
 python main.py -n 8 -s 512 -r 20
 python main.py --gif -s 512    # 512px looping GIFs
 python main.py --theme mono    # black & white
+python main.py -s 1024 --dpi 300
 ```
 
 ### Options
@@ -141,16 +164,14 @@ python main.py --theme mono    # black & white
 -s, --size     output image size in pixels (default: 256)
 -r, --rings    number of rings per image (default: 16)
 -o, --out-dir  output directory (default: imgs)
-<<<<<<< HEAD
+-t, --theme    color theme: nova, sunset, arctic, neon, mono (default: nova)
     --gif      render a seamless looping GIF instead of static PNGs
     --style    GIF motion: ripple, flow, rippleflow, tunnel, twist, breathing,
                kaleidoscope, interference (default: ripple)
     --fps      GIF speed and smoothness: 20, 25, or 50; loop is always 1s (default: 25)
     --shape    ring shape: circle, triangle, square, pentagon, hexagon, star,
                superellipse, or morph (GIF only) (default: circle)
-=======
--t, --theme    color theme: nova, sunset, arctic, neon, mono (default: nova)
->>>>>>> feat/color-themes
+    --dpi      DPI metadata for saved files (print sizing; default: unset)
     --seed     random seed for reproducible output
 ```
 
