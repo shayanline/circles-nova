@@ -157,7 +157,7 @@ def generator(save_path: str, target_size: int = 256, rings: int = 16,
         circle_color = palette_color(pos, palette)
 
         _draw_ring(rings_draw, glow_draw, center, radius, width, circle_color,
-                   factors=factors, anchor=center - padding)
+                   factors=factors, anchor=0)
 
     # Composite: dark canvas -> soft halo (limited) -> crisp tube rings on top.
     glow = glow.filter(ImageFilter.GaussianBlur(radius=scale_factor * 2))
@@ -248,11 +248,12 @@ def shape_factors_for(shape, phase=0.0):
 
 
 def _shape_xy(cx, cy, radius, shape, anchor=None):
-    # The shape is recentered by its bbox offset. `anchor` is the radius that
-    # offset scales with: pass a fixed value (the outer ring) so a whole stack
-    # of concentric rings shares one offset and keeps uniform edge spacing;
-    # leave it None to scale the offset with this ring (centers a lone ring at
-    # cx, cy, used by the off-center and zoom styles).
+    # `anchor` controls the bbox recentering offset. anchor=0 keeps the shape's
+    # own center (incenter) on (cx, cy): all concentric rings then share that
+    # point, giving even edge spacing and a centered bullseye (the concentric
+    # styles use this). anchor=None scales the bbox offset with this ring, which
+    # centers a single ring's bounding box on (cx, cy) (the off-center and zoom
+    # styles use this so each ring sits at its own spot).
     factors, ox, oy, _inner = shape
     a = radius if anchor is None else anchor
     n = len(factors)
@@ -357,13 +358,13 @@ def render_ripple_frame(canvas_px, center, step, padding, rings, lo, hi,
         else:
             color = palette_color(lo + (hi - lo) * (eff / max(1, rings - 1)), palette)
         _draw_ring(rings_draw, glow_draw, center, radius, width, color, alpha,
-                   factors, anchor=center - padding)
+                   factors, anchor=0)
 
     # Permanent outermost ring, drawn LAST so it is never overwritten and stays
     # exactly the same every frame, masking where the next ring is born.
     _draw_ring(rings_draw, glow_draw, center, center - padding, width,
                palette_color(lo, palette), factors=factors,
-               anchor=center - padding)
+               anchor=0)
 
     return _finish_frame(canvas_px, rings_layer, glow, scale_factor, target_size)
 
@@ -387,7 +388,7 @@ def render_flow_frame(canvas_px, center, step, padding, rings, lo, hi,
         radius = center - (padding + i * step)
         _draw_ring(rings_draw, glow_draw, center, radius, width,
                    _flow_color(i, rings, lo, hi, phase, palette),
-                   factors=factors, anchor=center - padding)
+                   factors=factors, anchor=0)
 
     return _finish_frame(canvas_px, rings_layer, glow, scale_factor, target_size)
 
@@ -536,7 +537,7 @@ def render_breathing_frame(canvas_px, center, step, padding, rings, lo, hi,
             continue
         color = palette_color(lo + (hi - lo) * depth, palette)
         _draw_ring(rings_draw, glow_draw, center, radius, width, color,
-                   factors=factors, anchor=center - padding)
+                   factors=factors, anchor=0)
 
     return _finish_frame(canvas_px, rings_layer, glow, scale_factor, target_size)
 
