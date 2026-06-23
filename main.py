@@ -7,6 +7,7 @@
 
 import argparse
 import functools
+import math
 import os
 import random
 
@@ -73,12 +74,14 @@ def interpolate(start_color, end_color, factor: float):
     )
 
 
-def generator(save_path: str, target_size: int = 256, rings: int = 16):
+def generator(save_path: str, target_size: int = 256, rings: int = 16,
+              shape: str = "circle"):
     # Render at a higher resolution, then shrink down at the end. This is what
     # gives the rings clean, anti-aliased edges instead of jagged pixels.
     scale_factor = 4
     canvas_px = target_size * scale_factor
     padding = 4 * scale_factor
+    factors = shape_factors_for(shape)  # None for a circle (fast ellipse path)
 
     # Each image "catches" a smooth, continuous slice of the painting palette,
     # so the rings melt from one beautiful color into the next.
@@ -110,10 +113,8 @@ def generator(save_path: str, target_size: int = 256, rings: int = 16):
         pos = lo + (hi - lo) * f + random.uniform(-0.03, 0.03)
         circle_color = palette_color(pos)
 
-        draw_tube_ring(rings_draw, center, radius, width, circle_color)
-        glow_draw.ellipse((center - radius, center - radius,
-                           center + radius, center + radius),
-                          outline=circle_color, width=int(width))
+        _draw_ring(rings_draw, glow_draw, center, radius, width, circle_color,
+                   factors=factors)
 
     # Composite: dark canvas -> soft halo (limited) -> crisp tube rings on top.
     glow = glow.filter(ImageFilter.GaussianBlur(radius=scale_factor * 2))
@@ -125,13 +126,93 @@ def generator(save_path: str, target_size: int = 256, rings: int = 16):
     image.save(save_path)
 
 
-def _draw_ring(rings_draw, glow_draw, center, radius, width, color, alpha=1.0):
-    """Draw one ring onto the crisp and glow layers, dimmed by alpha."""
-    draw_tube_ring(rings_draw, center, radius, width, color, alpha)
+SHAPE_NAMES = ("circle", "triangle", "square", "pentagon", "hexagon", "star",
+               "superellipse", "morph")
+# Shapes cycled through by the morph option (back to the first to loop).
+_MORPH_SEQUENCE = ("triangle", "square", "pentagon", "hexagon", "star", "superellipse")
+_SHAPE_SAMPLES = 120  # points used to trace a non-circular ring
+
+
+def _shape_factors(shape, n=_SHAPE_SAMPLES):
+    """Radius factor at n evenly spaced angles for a unit `shape` (circle == 1)."""
+    out = []
+    for j in range(n):
+        th = 2 * math.pi * j / n - math.pi / 2  # start at the top
+        if shape == "circle":
+            r = 1.0
+        elif shape == "superellipse":
+            p = 4.0
+            r = (abs(math.cos(th)) ** p + abs(math.sin(th)) ** p) ** (-1.0 / p)
+        elif shape == "star":
+            pts, k = 5, (th + math.pi / 2) / (math.pi / 5)
+            a = 1.0 if int(k) % 2 == 0 else 0.45
+            b = 1.0 if (int(k) + 1) % 2 == 0 else 0.45
+            r = a + (b - a) * (k - int(k))
+        else:
+            sides = {"triangle": 3, "square": 4, "pentagon": 5, "hexagon": 6}[shape]
+            ang = 2 * math.pi / sides
+            r = math.cos(math.pi / sides) / math.cos(((th + math.pi / 2) % ang) - math.pi / sides)
+        out.append(r)
+    peak = max(out)
+    return [v / peak for v in out]
+
+
+@functools.lru_cache(maxsize=None)
+def _shape_table(shape):
+    return tuple(_shape_factors(shape))
+
+
+def shape_factors_for(shape, phase=0.0):
+    """Factors for a ring at the given loop phase. `circle` -> None (use the
+    fast ellipse path). `morph` cycles through the shapes and loops seamlessly."""
+    if shape == "circle":
+        return None
+    if shape != "morph":
+        return _shape_table(shape)
+    seq = _MORPH_SEQUENCE
+    pos = (phase % 1.0) * len(seq)
+    i = int(pos)
+    frac = pos - i
+    frac = frac * frac * (3 - 2 * frac)  # smoothstep between shapes
+    a, b = _shape_table(seq[i % len(seq)]), _shape_table(seq[(i + 1) % len(seq)])
+    return tuple(av + (bv - av) * frac for av, bv in zip(a, b))
+
+
+def _shape_xy(center, radius, factors):
+    n = len(factors)
+    return [(center + radius * factors[j] * math.cos(2 * math.pi * j / n - math.pi / 2),
+             center + radius * factors[j] * math.sin(2 * math.pi * j / n - math.pi / 2))
+            for j in range(n)]
+
+
+def _draw_ring(rings_draw, glow_draw, center, radius, width, color, alpha=1.0,
+               factors=None):
+    """Draw one ring onto the crisp and glow layers, dimmed by alpha. With
+    `factors` (a shape's per-angle radii) the ring is a polygon instead of a
+    circle; without it the fast ellipse path is used (unchanged)."""
     glow_color = interpolate((0, 0, 0), color, alpha) if alpha < 1.0 else color
-    glow_draw.ellipse((center - radius, center - radius,
-                       center + radius, center + radius),
-                      outline=glow_color, width=int(width))
+    if factors is None:
+        draw_tube_ring(rings_draw, center, radius, width, color, alpha)
+        glow_draw.ellipse((center - radius, center - radius,
+                           center + radius, center + radius),
+                          outline=glow_color, width=int(width))
+        return
+
+    # Shaped ring: trace the bead-shaded tube as nested polygons.
+    dark = interpolate(color, (0, 0, 0), 0.65)
+    light = interpolate(color, (255, 255, 255), 0.6)
+    steps = max(3, int(width))
+    for s in range(steps + 1):
+        t = s / steps
+        rr = radius - width / 2 + t * width
+        val = max(0.0, 1 - ((t - 0.42) / 0.5) ** 2)
+        shade = interpolate(dark, light, val)
+        if alpha < 1.0:
+            shade = interpolate((0, 0, 0), shade, alpha)
+        pts = _shape_xy(center, rr, factors)
+        rings_draw.line(pts + [pts[0]], fill=shade, width=2, joint="curve")
+    gpts = _shape_xy(center, radius, factors)
+    glow_draw.line(gpts + [gpts[0]], fill=glow_color, width=int(width), joint="curve")
 
 
 def _finish_frame(canvas_px, rings_layer, glow, scale_factor, target_size):
@@ -152,7 +233,8 @@ def _flow_color(coord, rings, lo, hi, phase):
 
 
 def render_ripple_frame(canvas_px, center, step, padding, rings, lo, hi,
-                        phase, scale_factor, target_size, flow=False):
+                        phase, scale_factor, target_size, flow=False,
+                        shape="circle"):
     """Moving rings that drift inward (the classic ripple).
 
     The outermost ring is pinned in place and each new ring is born *beneath*
@@ -165,6 +247,7 @@ def render_ripple_frame(canvas_px, center, step, padding, rings, lo, hi,
     glow = Image.new("RGB", (canvas_px, canvas_px), (0, 0, 0))
     glow_draw = ImageDraw.Draw(glow)
 
+    factors = shape_factors_for(shape, phase)
     width = step * 0.55
 
     # Moving rings drift inward. Each is born hidden behind the permanent outer
@@ -186,18 +269,19 @@ def render_ripple_frame(canvas_px, center, step, padding, rings, lo, hi,
             color = _flow_color(eff, rings, lo, hi, phase)
         else:
             color = palette_color(lo + (hi - lo) * (eff / max(1, rings - 1)))
-        _draw_ring(rings_draw, glow_draw, center, radius, width, color, alpha)
+        _draw_ring(rings_draw, glow_draw, center, radius, width, color, alpha,
+                   factors)
 
     # Permanent outermost ring, drawn LAST so it is never overwritten and stays
     # exactly the same every frame, masking where the next ring is born.
     _draw_ring(rings_draw, glow_draw, center, center - padding, width,
-               palette_color(lo))
+               palette_color(lo), factors=factors)
 
     return _finish_frame(canvas_px, rings_layer, glow, scale_factor, target_size)
 
 
 def render_flow_frame(canvas_px, center, step, padding, rings, lo, hi,
-                      phase, scale_factor, target_size):
+                      phase, scale_factor, target_size, shape="circle"):
     """Still rings, flowing color.
 
     Rings stay exactly where the static image puts them; only the color flows
@@ -209,11 +293,12 @@ def render_flow_frame(canvas_px, center, step, padding, rings, lo, hi,
     glow = Image.new("RGB", (canvas_px, canvas_px), (0, 0, 0))
     glow_draw = ImageDraw.Draw(glow)
 
+    factors = shape_factors_for(shape, phase)
     width = step * 0.55
     for i in range(rings):
         radius = center - (padding + i * step)
         _draw_ring(rings_draw, glow_draw, center, radius, width,
-                   _flow_color(i, rings, lo, hi, phase))
+                   _flow_color(i, rings, lo, hi, phase), factors=factors)
 
     return _finish_frame(canvas_px, rings_layer, glow, scale_factor, target_size)
 
@@ -227,7 +312,7 @@ STYLES = {
 
 
 def generate_gif(save_path: str, target_size: int = 256, rings: int = 16,
-                 fps: int = 25, style: str = "ripple"):
+                 fps: int = 25, style: str = "ripple", shape: str = "circle"):
     # The loop is always one second: one frame per fps. fps is restricted to
     # values that divide cleanly into GIF's 1/100s frame delays, so timing is
     # always even (50/40/20 ms) and the loop is perfect.
@@ -247,7 +332,7 @@ def generate_gif(save_path: str, target_size: int = 256, rings: int = 16,
 
     render = STYLES[style]
     images = [render(canvas_px, center, step, padding, rings, lo, hi,
-                     frame / frames, scale_factor, target_size)
+                     frame / frames, scale_factor, target_size, shape=shape)
               for frame in range(frames)]
 
     images[0].save(save_path, save_all=True, append_images=images[1:], loop=0,
@@ -273,6 +358,10 @@ def main():
     parser.add_argument("--fps", type=int, default=25, choices=FPS_CHOICES,
                         help="GIF speed and smoothness; the loop is always 1s "
                              "(default: 25)")
+    parser.add_argument("--shape", choices=SHAPE_NAMES, default="circle",
+                        help="ring shape: circle (default), triangle, square, "
+                             "pentagon, hexagon, star, superellipse, or 'morph' "
+                             "(cycles through the shapes; GIF only)")
     parser.add_argument("--seed", type=int, default=None,
                         help="random seed for reproducible output")
     args = parser.parse_args()
@@ -286,9 +375,10 @@ def main():
         path = os.path.join(args.out_dir, f"circle_{i}.{ext}")
         if args.gif:
             generate_gif(path, target_size=args.size, rings=args.rings,
-                         fps=args.fps, style=args.style)
+                         fps=args.fps, style=args.style, shape=args.shape)
         else:
-            generator(path, target_size=args.size, rings=args.rings)
+            generator(path, target_size=args.size, rings=args.rings,
+                      shape=args.shape)
         print(f"saved {path}")
 
 
