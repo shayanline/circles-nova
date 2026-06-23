@@ -129,6 +129,8 @@ python main.py --gif --shape morph        # rings morph shape over the loop
   are always rendered at 4x and downscaled, so larger sizes stay crisp.
 - `--dpi` writes DPI metadata onto the saved PNG for print sizing. It does not
   change the pixels, only how large the image prints (use `--size` for detail).
+  GIF has no resolution field, so `--dpi` is accepted with `--gif` but only
+  affects PNG output.
 
 ```bash
 python main.py -s 1024 --dpi 300   # high-res, print-ready PNGs
@@ -144,6 +146,35 @@ size means more real detail:
 A full high-res sample (`-s 512 --dpi 300`):
 
 ![high-res sample](examples/quality.png)
+
+## Mix and match
+
+The options compose freely. `--theme` recolors every style and shape, `--shape`
+applies to static images and to every GIF style (including a star-shaped tunnel
+or a triangular moire), and `--size`, `--rings`, `--fps`, `--seed` work
+throughout. A star-shaped, sunset-themed tunnel (`--gif --style tunnel --shape
+star --theme sunset`):
+
+![combined sample](examples/combined.gif)
+
+```bash
+python main.py --shape hexagon --theme arctic            # static arctic hexagons
+python main.py --gif --style tunnel --shape star --theme sunset
+python main.py --gif --style interference --shape triangle --theme neon
+python main.py --gif --style kaleidoscope --theme mono --fps 50
+```
+
+What goes with what:
+
+| Option | Static PNG | GIF (`--gif`) |
+|:-------|:----------:|:-------------:|
+| `--theme` (nova/sunset/arctic/neon/mono) | yes | yes |
+| `--shape` (triangle/square/…/star/superellipse) | yes | yes (every style) |
+| `--shape morph` | no (needs a loop) | yes |
+| `--style` (ripple/…/tunnel/twist/breathing/kaleidoscope/interference) | n/a | yes |
+| `--fps` (20/25/50) | n/a | yes |
+| `--size`, `--rings`, `--count`, `--seed` | yes | yes |
+| `--dpi` | yes | accepted, but GIF has no DPI field |
 
 ## Usage
 
