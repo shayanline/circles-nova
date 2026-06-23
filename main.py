@@ -237,8 +237,9 @@ def render_tunnel_frame(canvas_px, center, step, padding, rings, lo, hi,
 
     ratio = 1.0 + 2.4 / rings  # each ring this much bigger than the one before
     corner = center * 1.41421356  # distance to a corner: fully off past this
-    r_min = step * 1.4  # vanishing-point core radius; below this rings haze out
-    fade_end = r_min * 2.4  # rings reach full strength by this radius
+    r_min = step * 1.8  # vanishing-point core radius; below this rings haze out
+    fade_end = r_min * 3.2  # rings reach full strength by this radius, hazed in
+    #          across several rings so the dense core never shimmers
 
     k = -3  # start inside the core (those rings are hazed out) so none pop in
     while True:
