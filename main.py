@@ -224,9 +224,11 @@ def render_tunnel_frame(canvas_px, center, step, padding, rings, lo, hi,
 
     Ring radii are spaced geometrically and the whole field scales by exactly
     one ratio per loop, so each ring lands where the next one was: a perfectly
-    seamless zoom. Rings grow outward and exit past the frame while new ones
-    emerge at the center; thickness scales with depth and the color flows with
-    it, so it reads as perspective.
+    seamless zoom. Rings grow outward and only leave once the whole tube is past
+    the corners (so they never pop while a sliver is still on screen), while new
+    ones haze in softly at the vanishing point, kept faint until they are big
+    enough to render cleanly, so the cramped core never flickers. Thickness
+    scales with depth and the color flows with it, so it reads as perspective.
     """
     rings_layer = Image.new("RGB", (canvas_px, canvas_px), (0, 0, 0))
     rings_draw = ImageDraw.Draw(rings_layer)
@@ -234,19 +236,23 @@ def render_tunnel_frame(canvas_px, center, step, padding, rings, lo, hi,
     glow_draw = ImageDraw.Draw(glow)
 
     ratio = 1.0 + 2.4 / rings  # each ring this much bigger than the one before
-    corner = center * 1.41421356  # beyond this a ring is fully off-frame
-    r_min = step * 0.6  # smallest ring near the vanishing point
+    corner = center * 1.41421356  # distance to a corner: fully off past this
+    r_min = step * 1.4  # vanishing-point core radius; below this rings haze out
+    fade_end = r_min * 2.4  # rings reach full strength by this radius
 
-    k = -2  # start a touch inside so new rings emerge from the center, not pop
+    k = -3  # start inside the core (those rings are hazed out) so none pop in
     while True:
         radius = r_min * ratio ** (k + phase)
         k += 1
-        if radius > corner:
-            break
         width = radius * (ratio - 1.0) * 0.55  # thickness scales with depth
-        # Fade the tiniest rings in at the vanishing point (a pure function of
-        # radius, hence of k+phase, so the loop stays seamless).
-        fade = max(0.0, min(1.0, (radius / r_min - 1.0 / ratio) / (1.0 - 1.0 / ratio)))
+        # Cull only once the whole tube (its inner edge) is past the far corner,
+        # so a ring never vanishes while part of it is still on screen.
+        if radius - width / 2.0 > corner:
+            break
+        # Haze new rings in across a few steps near the vanishing point, faint
+        # until they are large enough to render without shimmer. A pure function
+        # of radius (hence of k+phase), so the loop stays seamless.
+        fade = max(0.0, min(1.0, (radius - r_min) / (fade_end - r_min)))
         alpha = fade * fade * (3 - 2 * fade)
         if alpha <= 0:
             continue
