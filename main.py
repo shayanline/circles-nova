@@ -183,17 +183,20 @@ def _angle(j, n):
 
 def _centered(factors):
     """Bundle per-angle radius `factors` with the (ox, oy) offset of the unit
-    shape's bounding-box center. Shapes like a triangle or star have their
-    centroid well off the bbox center, so drawing them straight from the canvas
-    center leaves the frame lop-sided (an empty band on one side). Subtracting
-    this offset (scaled by each ring's radius, so the rings stay concentric)
-    sits the shape squarely in the frame."""
+    shape's bounding-box center and `inner`, the shape's smallest reach from
+    that center. Shapes like a triangle or star have their centroid well off
+    the bbox center, so drawing them straight from the canvas center leaves the
+    frame lop-sided (an empty band on one side). Subtracting this offset (scaled
+    by each ring's radius, so the rings stay concentric) sits the shape squarely
+    in the frame. `inner` lets the tunnel know how far a shaped ring really
+    reaches inward, so it culls a ring only once even its nearest edge is gone."""
     n = len(factors)
     xs = [factors[j] * math.cos(_angle(j, n)) for j in range(n)]
     ys = [factors[j] * math.sin(_angle(j, n)) for j in range(n)]
     ox = (max(xs) + min(xs)) / 2
     oy = (max(ys) + min(ys)) / 2
-    return (tuple(factors), ox, oy)
+    inner = min(math.hypot(xs[j] - ox, ys[j] - oy) for j in range(n))
+    return (tuple(factors), ox, oy, inner)
 
 
 def _shape_factors(shape, n=_SHAPE_SAMPLES):
@@ -245,7 +248,7 @@ def shape_factors_for(shape, phase=0.0):
 
 
 def _shape_xy(cx, cy, radius, shape):
-    factors, ox, oy = shape
+    factors, ox, oy, _inner = shape
     n = len(factors)
     return [(cx + radius * (factors[j] * math.cos(_angle(j, n)) - ox),
              cy + radius * (factors[j] * math.sin(_angle(j, n)) - oy))
@@ -398,19 +401,25 @@ def render_tunnel_frame(canvas_px, center, step, padding, rings, lo, hi,
     glow_draw = ImageDraw.Draw(glow)
 
     factors = shape_factors_for(shape, phase)
+    # How far a ring reaches inward as a fraction of its scale: 1 for a circle,
+    # but much less for a star (its valleys), so shaped rings must grow larger
+    # before they are fully gone.
+    inner = 1.0 if factors is None else factors[3]
     ratio = 1.0 + 2.4 / rings  # each ring this much bigger than the one before
     corner = center * 1.41421356  # distance to a corner: fully off past this
-    r_min = step * 1.4  # vanishing-point core radius; below this rings haze out
-    fade_end = r_min * 2.4  # rings reach full strength by this radius
+    r_min = step * 1.8  # vanishing-point core radius; below this rings haze out
+    fade_end = r_min * 3.2  # rings reach full strength by this radius, hazed in
+    #          across several rings so the dense core never shimmers
 
     k = -3  # start inside the core (those rings are hazed out) so none pop in
     while True:
         radius = r_min * ratio ** (k + phase)
         k += 1
         width = radius * (ratio - 1.0) * 0.55  # thickness scales with depth
-        # Cull only once the whole tube (its inner edge) is past the far corner,
-        # so a ring never vanishes while part of it is still on screen.
-        if radius - width / 2.0 > corner:
+        # Cull only once even the ring's nearest point (radius * inner) is past
+        # the far corner, so no shape ever vanishes while a sliver is still on
+        # screen, however pointy it is.
+        if radius * inner - width / 2.0 > corner:
             break
         # Haze new rings in across a few steps near the vanishing point, faint
         # until they are large enough to render without shimmer. A pure function
