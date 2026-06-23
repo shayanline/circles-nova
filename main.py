@@ -114,7 +114,7 @@ def generator(save_path: str, target_size: int = 256, rings: int = 16,
         circle_color = palette_color(pos)
 
         _draw_ring(rings_draw, glow_draw, center, radius, width, circle_color,
-                   factors=factors, anchor=center - padding)
+                   factors=factors)
 
     # Composite: dark canvas -> soft halo (limited) -> crisp tube rings on top.
     glow = glow.filter(ImageFilter.GaussianBlur(radius=scale_factor * 2))
@@ -137,24 +137,11 @@ def _angle(j, n):
     return 2 * math.pi * j / n - math.pi / 2  # j == 0 points straight up
 
 
-def _centered(factors):
-    """Bundle per-angle radius `factors` with the (ox, oy) offset of the unit
-    shape's bounding-box center. A triangle or star has its centroid well off
-    the bbox center, so drawing it straight from the canvas center leaves the
-    frame lop-sided (an empty band on one side, e.g. the bottom for an upward
-    triangle). Subtracting this offset (scaled by each ring's radius, so the
-    rings stay concentric) sits the shape squarely in the frame."""
-    n = len(factors)
-    xs = [factors[j] * math.cos(_angle(j, n)) for j in range(n)]
-    ys = [factors[j] * math.sin(_angle(j, n)) for j in range(n)]
-    ox = (max(xs) + min(xs)) / 2
-    oy = (max(ys) + min(ys)) / 2
-    return (tuple(factors), ox, oy)
-
-
 def _shape_factors(shape, n=_SHAPE_SAMPLES):
-    """Radius factor at n evenly spaced angles for a unit `shape` (circle == 1),
-    bundled with its bounding-box-center offset (see `_centered`)."""
+    """Radius factor at n evenly spaced angles for a unit `shape` (circle == 1).
+    Rings are scaled about the shape's own center, so concentric rings share
+    one center: spacing stays even and the bullseye is centered (a pointed
+    shape naturally leaves a little space opposite its vertex)."""
     out = []
     for j in range(n):
         th = _angle(j, n)
@@ -174,7 +161,7 @@ def _shape_factors(shape, n=_SHAPE_SAMPLES):
             r = math.cos(math.pi / sides) / math.cos(((th + math.pi / 2) % ang) - math.pi / sides)
         out.append(r)
     peak = max(out)
-    return _centered([v / peak for v in out])
+    return tuple(v / peak for v in out)
 
 
 @functools.lru_cache(maxsize=None)
@@ -183,9 +170,9 @@ def _shape_table(shape):
 
 
 def shape_factors_for(shape, phase=0.0):
-    """Shape data (factors + bbox offset) for a ring at the given loop phase.
-    `circle` -> None (use the fast ellipse path). `morph` cycles through the
-    shapes and loops seamlessly."""
+    """Per-angle radius factors for a ring at the given loop phase. `circle` ->
+    None (use the fast ellipse path). `morph` cycles through the shapes and
+    loops seamlessly."""
     if shape == "circle":
         return None
     if shape != "morph":
@@ -195,31 +182,22 @@ def shape_factors_for(shape, phase=0.0):
     i = int(pos)
     frac = pos - i
     frac = frac * frac * (3 - 2 * frac)  # smoothstep between shapes
-    a = _shape_table(seq[i % len(seq)])[0]
-    b = _shape_table(seq[(i + 1) % len(seq)])[0]
-    return _centered([av + (bv - av) * frac for av, bv in zip(a, b)])
+    a, b = _shape_table(seq[i % len(seq)]), _shape_table(seq[(i + 1) % len(seq)])
+    return tuple(av + (bv - av) * frac for av, bv in zip(a, b))
 
 
-def _shape_xy(center, radius, shape, anchor=None):
-    # The shape is recentered by its bbox offset. `anchor` is the radius that
-    # offset scales with: pass a fixed value (the outer ring) so a concentric
-    # stack shares one offset and keeps uniform edge spacing (otherwise the
-    # edges nearest the center pack tighter than the far ones, e.g. a triangle's
-    # apex reads denser than its base). None scales the offset with this ring.
-    factors, ox, oy = shape
-    a = radius if anchor is None else anchor
+def _shape_xy(center, radius, factors):
     n = len(factors)
-    return [(center + radius * factors[j] * math.cos(_angle(j, n)) - a * ox,
-             center + radius * factors[j] * math.sin(_angle(j, n)) - a * oy)
+    return [(center + radius * factors[j] * math.cos(_angle(j, n)),
+             center + radius * factors[j] * math.sin(_angle(j, n)))
             for j in range(n)]
 
 
 def _draw_ring(rings_draw, glow_draw, center, radius, width, color, alpha=1.0,
-               factors=None, anchor=None):
+               factors=None):
     """Draw one ring onto the crisp and glow layers, dimmed by alpha. With
     `factors` (a shape's per-angle radii) the ring is a polygon instead of a
-    circle; without it the fast ellipse path is used (unchanged). `anchor` fixes
-    the bbox-offset radius so a concentric stack keeps uniform edge spacing."""
+    circle; without it the fast ellipse path is used (unchanged)."""
     glow_color = interpolate((0, 0, 0), color, alpha) if alpha < 1.0 else color
     if factors is None:
         draw_tube_ring(rings_draw, center, radius, width, color, alpha)
@@ -239,9 +217,9 @@ def _draw_ring(rings_draw, glow_draw, center, radius, width, color, alpha=1.0,
         shade = interpolate(dark, light, val)
         if alpha < 1.0:
             shade = interpolate((0, 0, 0), shade, alpha)
-        pts = _shape_xy(center, rr, factors, anchor)
+        pts = _shape_xy(center, rr, factors)
         rings_draw.line(pts + [pts[0]], fill=shade, width=2, joint="curve")
-    gpts = _shape_xy(center, radius, factors, anchor)
+    gpts = _shape_xy(center, radius, factors)
     glow_draw.line(gpts + [gpts[0]], fill=glow_color, width=int(width), joint="curve")
 
 
@@ -300,12 +278,12 @@ def render_ripple_frame(canvas_px, center, step, padding, rings, lo, hi,
         else:
             color = palette_color(lo + (hi - lo) * (eff / max(1, rings - 1)))
         _draw_ring(rings_draw, glow_draw, center, radius, width, color, alpha,
-                   factors, anchor=center - padding)
+                   factors)
 
     # Permanent outermost ring, drawn LAST so it is never overwritten and stays
     # exactly the same every frame, masking where the next ring is born.
     _draw_ring(rings_draw, glow_draw, center, center - padding, width,
-               palette_color(lo), factors=factors, anchor=center - padding)
+               palette_color(lo), factors=factors)
 
     return _finish_frame(canvas_px, rings_layer, glow, scale_factor, target_size)
 
@@ -328,8 +306,7 @@ def render_flow_frame(canvas_px, center, step, padding, rings, lo, hi,
     for i in range(rings):
         radius = center - (padding + i * step)
         _draw_ring(rings_draw, glow_draw, center, radius, width,
-                   _flow_color(i, rings, lo, hi, phase), factors=factors,
-                   anchor=center - padding)
+                   _flow_color(i, rings, lo, hi, phase), factors=factors)
 
     return _finish_frame(canvas_px, rings_layer, glow, scale_factor, target_size)
 
