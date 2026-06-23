@@ -70,6 +70,27 @@ python main.py --gif --style tunnel       # infinite zoom
 python main.py --gif --fps 50             # smoothest
 ```
 
+## Shapes
+
+By default the rings are circles. Pass `--shape` to draw them as any regular
+polygon instead, `superellipse` for a soft rounded square, or `star`:
+
+| `triangle` | `square` | `hexagon` | `star` | `superellipse` |
+|:----------:|:--------:|:---------:|:------:|:--------------:|
+| ![triangle](examples/shape_triangle.png) | ![square](examples/shape_square.png) | ![hexagon](examples/shape_hexagon.png) | ![star](examples/shape_star.png) | ![superellipse](examples/shape_superellipse.png) |
+
+`--shape` works for both static PNGs and `--gif`. For GIFs there is also a
+special `morph` shape that smoothly cycles the rings through every shape and
+loops seamlessly:
+
+![morph](examples/morph.gif)
+
+```bash
+python main.py --shape star               # five-pointed star rings
+python main.py --shape hexagon -s 512     # bigger hexagons
+python main.py --gif --shape morph        # rings morph shape over the loop
+```
+
 ## Usage
 
 ```bash
@@ -90,6 +111,8 @@ python main.py --gif -s 512    # 512px looping GIFs
     --gif      render a seamless looping GIF instead of static PNGs
     --style    GIF motion: ripple, flow, rippleflow, or tunnel (default: ripple)
     --fps      GIF speed and smoothness: 20, 25, or 50; loop is always 1s (default: 25)
+    --shape    ring shape: circle, triangle, square, pentagon, hexagon, star,
+               superellipse, or morph (GIF only) (default: circle)
     --seed     random seed for reproducible output
 ```
 
